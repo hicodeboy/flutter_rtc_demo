@@ -1,11 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter_rtc_demo/main.dart';
 import 'package:flutter_webrtc/webrtc.dart';
 import 'package:random_string/random_string.dart';
 import 'package:web_socket_channel/io.dart';
 
 // 信令状态的回调
-typedef void SignalingStateCallback();
+typedef void SignalingStateCallback(SignalingState state);
 // 媒体流的状态回调
 typedef void StreamStateCallback(MediaStream stream);
 
@@ -136,6 +137,119 @@ class RTCSignaling {
   // 切换前后摄像头
   void switchCamera() {
     _localStream?.getVideoTracks()[0].switchCamera();
+  }
+
+  // 邀请对方进行会话
+  void invite(String peer_id) {
+    _sessionId = '$_selfId-$peer_id';
+    if (this.onStateChange != null)
+      this.onStateChange(SignalingState.CallStateNew);
+
+    // 创建一个peerconnection
+    _createPeerConnection(peer_id).then((pc) {
+      _peerConnections[peer_id] = pc;
+      _createOffer(peer_id, pc);
+    });
+  }
+
+  /*
+  * 收到消息处理逻辑
+  * */
+  void onMessage(message) async {
+    Map mapData = _decoder.convert(message);
+    var data = mapData['data'];
+    switch (mapData['type']) {
+      //新成员加入刷新界面
+      case 'peers':
+        {
+          List peers = data;
+          if (this.onPeersUpdate != null) {
+            Map event = Map();
+            event['self'] = _selfId;
+            event['peers'] = peers;
+            this.onPeersUpdate(event);
+          }
+        }
+        break;
+
+      // 接受offer
+      case 'offer':
+        {
+          String id = data['from'];
+          var description = data['description'];
+          var sessionId = data['session_id'];
+          _sessionId = sessionId;
+          if (this.onStateChange != null)
+            this.onStateChange(SignalingState.CallStateNew);
+
+          /*
+          * 收到offer后，创建本地的peerconnection
+          * 之后设置远端的媒体信息，并向对端发送answer进行应答
+          * */
+          _createPeerConnection(id).then((pc) {
+            _peerConnections[id] = pc;
+            pc.setRemoteDescription(
+                RTCSessionDescription(description['sdp'], description['type']));
+            _createAnswer(id, pc);
+          });
+        }
+        break;
+
+      /*
+      * 收到对端answer
+      * */
+      case 'answer':
+        {
+          String id = data['from'];
+          Map description = data['description'];
+          RTCPeerConnection pc = _peerConnections[id];
+          pc?.setRemoteDescription(
+              RTCSessionDescription(description['sdp'], description['type']));
+        }
+        break;
+
+      // 收到对端的候选者，并添加候选者
+      case 'candidate':
+        {
+          String id = data['from'];
+
+          Map candidateMap = data['candidate'];
+          RTCPeerConnection pc = _peerConnections[id];
+          RTCIceCandidate candidate = RTCIceCandidate(candidateMap['candidate'],
+              candidateMap['sdpMid'], candidateMap['sdpMlineIndex']);
+          pc?.addCandidate(candidate);
+        }
+        break;
+      // 离开
+      case 'bye':
+        {
+          String id = data['to'];
+          _localStream?.dispose();
+          _localStream = null;
+
+          RTCPeerConnection pc = _peerConnections[id];
+          pc?.close();
+          _peerConnections.remove(pc);
+
+          _sessionId = null;
+          if (this.onStateChange != null)
+            this.onStateChange(SignalingState.CallStateBye);
+        }
+        break;
+      // 心跳
+      case 'keepalive':
+        {
+          print('收到心跳检测');
+        }
+        break;
+    }
+  }
+
+  /*
+  * 结束会话
+  * */
+  void bye() {
+    send('bye', {'session_id': _sessionId, 'from': _selfId});
   }
 
   // 创建PeerConnection
