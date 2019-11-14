@@ -137,4 +137,81 @@ class RTCSignaling {
   void switchCamera() {
     _localStream?.getVideoTracks()[0].switchCamera();
   }
+
+  // 创建PeerConnection
+  Future<RTCPeerConnection> _createPeerConnection(id) async {
+    // 获取本地媒体
+    _localStream = await createStream();
+    RTCPeerConnection pc = await createPeerConnection(_iceServers, _config);
+    // 本地媒体流赋值给peerconnection
+    pc.addStream(_localStream);
+
+    // 获取候选者
+    pc.onIceCandidate = (candidate) {
+      send('candidate', {
+        'to': id,
+        'candidate': {
+          'sdpMLineIndex': candidate.sdpMlineIndex,
+          'sdpMid': candidate.sdpMid,
+          'candidate': candidate.candidate
+        },
+        'session_id': _sessionId
+      });
+    };
+
+    pc.onAddStream = (stream) {
+      if (this.onAddRemoteStream != null) this.onAddRemoteStream(stream);
+    };
+
+    /*
+    * 移除媒体流
+    * */
+    pc.onRemoveStream = (stream) {
+      if (this.onRemoveRemoteStream != null) this.onRemoveRemoteStream(stream);
+      _remoteStreams.removeWhere((it) {
+        return (it.id == stream.id);
+      });
+    };
+
+    return pc;
+  }
+
+  /*
+  * 创建offer
+  * */
+  void _createOffer(String id, RTCPeerConnection pc) async {
+    RTCSessionDescription sdp = await pc.createOffer(_constraints);
+    pc.setLocalDescription(sdp);
+    // 向对端发送自己的媒体信息
+    send('offer', {
+      'to': id,
+      'description': {'sdp': sdp.sdp, 'type': sdp.type},
+      'session_id': _sessionId,
+    });
+  }
+
+  /*
+  * 创建answer
+  * */
+  void _createAnswer(String id, RTCPeerConnection pc) async {
+    RTCSessionDescription sdp = await pc.createAnswer(_constraints);
+    pc.setLocalDescription(sdp);
+    /*
+    * 发送answer
+    * */
+    send('answer', {
+      'to': id,
+      'description': {'sdp': sdp.sdp, 'type': sdp.type},
+      'session_id': _sessionId,
+    });
+  }
+
+  /*
+  * 消息发送
+  * */
+  void send(event, data) {
+    data['type'] = event;
+    _channel?.sink.add(_encoder.convert(data));
+    print('${_encoder.convert(data)}');
+  }
 }
