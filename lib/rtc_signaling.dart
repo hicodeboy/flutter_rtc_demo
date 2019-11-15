@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_rtc_demo/main.dart';
 import 'package:flutter_webrtc/webrtc.dart';
@@ -91,8 +92,18 @@ class RTCSignaling {
 
     _channel.stream.listen((message) {
       print('收到的内容 ： $message');
+      onMessage(message);
     }).onDone(() {
       print('closed by server!');
+    });
+
+    /*
+    * 向信令服务发送注册消息
+    * */
+    send('new', {
+      'name': display,
+      'id': _selfId,
+      'user_agent': 'flutter-webrtc + ${Platform.operatingSystem}'
     });
   }
 
