@@ -40,6 +40,74 @@ class _P2PDemoState extends State<P2PDemo> {
   // 是否处于通话状态
   bool _inCalling = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _initRenderers();
+    _connect();
+  }
+
+  // 懒加载本地和对端渲染窗口
+  void _initRenderers() async {
+    await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
+  }
+
+  // 连接socket
+  void _connect() async {
+    if (_signaling == null) {
+      _signaling = RTCSignaling(url: serverUrl, display: _displayName);
+
+      // 信令状态的回调
+      _signaling.onStateChange = (SignalingState state) {
+        switch (state) {
+          case SignalingState.CallStateNew:
+            setState(() {
+              _inCalling = true;
+            });
+            break;
+          case SignalingState.CallStateBye:
+            setState(() {
+              _localRenderer.srcObject = null;
+              _remoteRenderer.srcObject = null;
+              _inCalling = false;
+            });
+            break;
+          case SignalingState.CallStateRinging:
+          case SignalingState.CallStateInvite:
+          case SignalingState.CallStateConnected:
+          case SignalingState.ConnectionOpen:
+            break;
+          case SignalingState.ConnectionClosed:
+            break;
+          case SignalingState.ConnectionError:
+            break;
+        }
+      };
+
+      // 更新房间人员列表
+      _signaling.onPeersUpdate = ((event) {
+        setState(() {
+          _selfId = event['self'];
+          _peers = event['peers'];
+        });
+      });
+
+      // 设置本地媒体
+      _signaling.onLocalStream = ((stream) {
+        _localRenderer.srcObject = stream;
+      });
+
+      // 设置远端媒体
+      _signaling.onAddRemoteStream = ((stream) {
+        _remoteRenderer.srcObject = stream;
+      });
+
+      // socket 进行连接
+      _signaling.connect();
+    }
+  }
+
   Widget _buildRow(context, peer) {
     return ListBody(
       children: <Widget>[
