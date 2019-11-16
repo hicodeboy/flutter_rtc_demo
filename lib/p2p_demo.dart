@@ -205,9 +205,9 @@ class _P2PDemoState extends State<P2PDemo> {
           : ListView.builder(
               shrinkWrap: true,
               padding: EdgeInsets.all(1),
-              itemCount: 5,
+              itemCount: (_peers != null) ? _peers.length : 0,
               itemBuilder: (context, i) {
-                return _buildRow(context, '测试');
+                return _buildRow(context, _peers[i]);
               }),
     );
   }
