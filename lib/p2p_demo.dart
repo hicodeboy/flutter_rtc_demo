@@ -11,7 +11,7 @@ class P2PDemo extends StatefulWidget {
   P2PDemo({Key key, @required this.url}) : super(key: key);
 
   @override
-  _P2PDemoState createState() => _P2PDemoState();
+  _P2PDemoState createState() => _P2PDemoState(serverUrl: url);
 }
 
 class _P2PDemoState extends State<P2PDemo> {
@@ -185,19 +185,19 @@ class _P2PDemoState extends State<P2PDemo> {
                           height: MediaQuery.of(context).size.height,
                           child: RTCVideoView(_remoteRenderer),
                           decoration: BoxDecoration(color: Colors.grey),
-                        )),Positioned(
-                        right: 20.0,
-                        top: 20.0,
-                        child: Container(
-                          width: orientation == Orientation.portrait
-                              ? 90.0
-                              : 120.0,
-                          height: orientation == Orientation.portrait
-                              ? 120.0
-                              : 90.0,
-                          child: RTCVideoView(_localRenderer),
-                          decoration: BoxDecoration(color: Colors.black54),
-                        ))
+                        )),
+                    Positioned(
+                      right: 20.0,
+                      top: 20.0,
+                      child: Container(
+                        width:
+                            orientation == Orientation.portrait ? 90.0 : 120.0,
+                        height:
+                            orientation == Orientation.portrait ? 120.0 : 90.0,
+                        child: RTCVideoView(_localRenderer),
+                        decoration: BoxDecoration(color: Colors.black54),
+                      ),
+                    )
                   ],
                 ),
               );

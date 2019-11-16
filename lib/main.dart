@@ -29,8 +29,12 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   // 进入房间，页面跳转
   void _entryRoom() {
-    Navigator.push(context,
-        MaterialPageRoute(builder: (BuildContext context) => P2PDemo()));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (BuildContext context) => P2PDemo(
+                  url: 'ws://www.supercodeboy.com:7080',
+                )));
   }
 
   @override
