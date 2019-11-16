@@ -108,18 +108,35 @@ class _P2PDemoState extends State<P2PDemo> {
     }
   }
 
+  // 邀请对方
+  void _invitePeer(peerId) async {
+    _signaling?.invite(peerId);
+  }
+
+  // 挂断
+  void _hangup() {
+    _signaling?.bye();
+  }
+
+  // 切换前后摄像头
+  void _switchCamera() {
+    _signaling.switchCamera();
+    _localRenderer.mirror = true;
+  }
+
   Widget _buildRow(context, peer) {
+    bool isSelf = (peer['id'] == _selfId);
     return ListBody(
       children: <Widget>[
         ListTile(
-          title: Text(peer),
+          title: Text(isSelf
+              ? peer['name'] + 'self'
+              : '${peer['name']}  ${peer['user_agent']}'),
           trailing: SizedBox(
             width: 100,
             child: IconButton(
                 icon: Icon(Icons.videocam),
-                onPressed: () {
-                  print('呼叫对方');
-                }),
+                onPressed: () => _invitePeer(peer['id'])),
           ),
         ),
       ],
@@ -132,13 +149,66 @@ class _P2PDemoState extends State<P2PDemo> {
       appBar: AppBar(
         title: Text('P2P Call Sample'),
       ),
-      body: ListView.builder(
-          shrinkWrap: true,
-          padding: EdgeInsets.all(1),
-          itemCount: 5,
-          itemBuilder: (context, i) {
-            return _buildRow(context, '测试');
-          }),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: _inCalling
+          ? SizedBox(
+              width: 200,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  FloatingActionButton(
+                    onPressed: _switchCamera,
+                    child: Icon(Icons.switch_camera),
+                  ),
+                  FloatingActionButton(
+                    onPressed: _hangup,
+                    child: Icon(Icons.call_end),
+                    backgroundColor: Colors.deepOrange,
+                  ),
+                ],
+              ),
+            )
+          : null,
+      body: _inCalling
+          ? OrientationBuilder(builder: (context, orientation) {
+              return Container(
+                child: Stack(
+                  children: <Widget>[
+                    Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          margin: EdgeInsets.all(0),
+                          width: MediaQuery.of(context).size.width,
+                          height: MediaQuery.of(context).size.height,
+                          child: RTCVideoView(_remoteRenderer),
+                          decoration: BoxDecoration(color: Colors.grey),
+                        )),Positioned(
+                        right: 20.0,
+                        top: 20.0,
+                        child: Container(
+                          width: orientation == Orientation.portrait
+                              ? 90.0
+                              : 120.0,
+                          height: orientation == Orientation.portrait
+                              ? 120.0
+                              : 90.0,
+                          child: RTCVideoView(_localRenderer),
+                          decoration: BoxDecoration(color: Colors.black54),
+                        ))
+                  ],
+                ),
+              );
+            })
+          : ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.all(1),
+              itemCount: 5,
+              itemBuilder: (context, i) {
+                return _buildRow(context, '测试');
+              }),
     );
   }
 }
