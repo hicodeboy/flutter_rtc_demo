@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rtc_demo/p2p_demo.dart';
+import 'package:flutter_rtc_demo/rtc_signaling.dart';
 
 void main() => runApp(MyApp());
 
@@ -8,7 +9,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Flutter WebRTC Demo',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -27,28 +28,26 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // 进入房间，页面跳转
   void _entryRoom() {
     Navigator.push(
         context,
         MaterialPageRoute(
-            builder: (BuildContext context) => P2PDemo(
-                  url: 'ws://www.supercodeboy.com:7080',
-                )));
+            builder: (BuildContext context) =>
+                P2PDemo(url: 'ws://www.supercodeboy.com:7080')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
       body: Center(
-        child: RaisedButton(
-          onPressed: _entryRoom,
-          child: Text('进入房间'),
+        child: Center(
+          child: RaisedButton(
+            onPressed: _entryRoom,
+            child: Text('进入房间'),
+          ),
         ),
       ),
     );

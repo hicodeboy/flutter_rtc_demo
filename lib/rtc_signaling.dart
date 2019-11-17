@@ -1,64 +1,69 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_rtc_demo/main.dart';
 import 'package:flutter_webrtc/webrtc.dart';
-import 'package:random_string/random_string.dart';
+
 import 'package:web_socket_channel/io.dart';
 
-// 信令状态的回调
-typedef void SignalingStateCallback(SignalingState state);
-// 媒体流的状态回调
-typedef void StreamStateCallback(MediaStream stream);
-
-// 对方进入房间的回调
-typedef void OtherEventCallback(dynamic event);
+import 'package:random_string/random_string.dart';
 
 // 信令状态
 enum SignalingState {
-  CallStateNew, // 新进入房间
+  CallStateNew,
   CallStateRinging,
   CallStateInvite,
-  CallStateConnected, // 连接
-  CallStateBye, // 离开
+  CallStateConnected,
+  CallStateBye,
   ConnectionOpen,
   ConnectionClosed,
   ConnectionError,
 }
 
+/*
+ * callbacks for Signaling API.
+ */
+
+// 信令状态的回调
+typedef void SignalingStateCallback(SignalingState state);
+// 媒体流的状态回调
+typedef void StreamStateCallback(MediaStream stream);
+// 对方进入房价回调
+typedef void OtherEventCallback(dynamic event);
+
 class RTCSignaling {
   final String _selfId = randomNumeric(6);
-
   IOWebSocketChannel _channel;
 
-  String _sessionId; // 会话Id
+  String _sessionId;
 
-  String url; // websocket url
-  String display; // 展示名称
-
-  Map<String, RTCPeerConnection> _peerConnections =
-      Map<String, RTCPeerConnection>();
+  String url;
+  String displayName;
+  var _peerConnections = new Map<String, RTCPeerConnection>();
 
   MediaStream _localStream;
   List<MediaStream> _remoteStreams;
-
   SignalingStateCallback onStateChange;
-
   StreamStateCallback onLocalStream;
   StreamStateCallback onAddRemoteStream;
   StreamStateCallback onRemoveRemoteStream;
   OtherEventCallback onPeersUpdate;
-
-  JsonDecoder _decoder = JsonDecoder();
-
-  JsonEncoder _encoder = JsonEncoder();
+  JsonDecoder decoder = new JsonDecoder();
 
   /*
-  * turn 、 stun服务器的地址
+  * ice turn、stun 服务器 配置
   * */
   Map<String, dynamic> _iceServers = {
     'iceServers': [
-      {'url': 'turn:stun.l.supercodeboy.com:3478'},
+      {'url': 'stun:stun.l.google.com:19302'},
+      /*
+       * turn server configuration example.
+      {
+        'url': 'turn:123.45.67.89:3478',
+        'username': 'change_to_real_user',
+        'credential': 'change_to_real_secret'
+      },
+       */
     ]
   };
 
@@ -83,31 +88,49 @@ class RTCSignaling {
     'optional': [],
   };
 
-  RTCSignaling({this.url, this.display});
+  RTCSignaling({this.url, this.displayName});
 
-  // socket连接
-
+  /*
+  * socket 连接
+  * */
   void connect() async {
-    _channel = IOWebSocketChannel.connect(url);
+    try {
+      _channel = IOWebSocketChannel.connect(url);
 
-    _channel.stream.listen((message) {
-      print('收到的内容 ： $message');
-      onMessage(message);
-    }).onDone(() {
-      print('closed by server!');
-    });
+      print('连接成功');
+      this.onStateChange(SignalingState.ConnectionOpen);
 
-    /*
-    * 向信令服务发送注册消息
-    * */
-    send('new', {
-      'name': display,
-      'id': _selfId,
-      'user_agent': 'flutter-webrtc + ${Platform.operatingSystem}'
-    });
+      _channel.stream.listen((message) {
+        print('receive $message');
+
+        onMessage(message);
+      }).onDone(() {
+        print('Closed by server!');
+
+        if (this.onStateChange != null) {
+          this.onStateChange(SignalingState.ConnectionClosed);
+        }
+      });
+
+      /*
+      * 连接socket注册自己
+      * */
+      _send('new', {
+        'name': displayName,
+        'id': _selfId,
+        'user_agent': 'flutter-webrtc + ${Platform.operatingSystem}'
+      });
+    } catch (e) {
+      print(e.toString());
+      if (this.onStateChange != null) {
+        this.onStateChange(SignalingState.ConnectionError);
+      }
+    }
   }
 
-  // 创建本地媒体流
+  /*
+  * 创建本地媒体流
+  * */
   Future<MediaStream> createStream() async {
     final Map<String, dynamic> mediaConstraints = {
       'audio': true,
@@ -130,9 +153,10 @@ class RTCSignaling {
     return stream;
   }
 
-  // 关闭本地媒体，断开socket
-
-  void close() {
+  /*
+  * 关闭本地媒体，断开socket
+  * */
+  close() {
     if (_localStream != null) {
       _localStream.dispose();
       _localStream = null;
@@ -145,20 +169,31 @@ class RTCSignaling {
     if (_channel != null) _channel.sink.close();
   }
 
-  // 切换前后摄像头
+  /*
+  * 切换前后摄像头
+  * */
   void switchCamera() {
-    _localStream?.getVideoTracks()[0].switchCamera();
+    if (_localStream != null) {
+      _localStream.getVideoTracks()[0].switchCamera();
+    }
   }
 
-  // 邀请对方进行会话
+  /*
+  * 邀请对方进行会话
+  * */
   void invite(String peer_id) {
-    _sessionId = '$_selfId-$peer_id';
-    if (this.onStateChange != null)
-      this.onStateChange(SignalingState.CallStateNew);
+    this._sessionId = '$_selfId-$peer_id}';
 
-    // 创建一个peerconnection
+    if (this.onStateChange != null) {
+      this.onStateChange(SignalingState.CallStateNew);
+    }
+
+    /*
+    * 创建一个peerconnection
+    * */
     _createPeerConnection(peer_id).then((pc) {
       _peerConnections[peer_id] = pc;
+      //
       _createOffer(peer_id, pc);
     });
   }
@@ -167,15 +202,19 @@ class RTCSignaling {
   * 收到消息处理逻辑
   * */
   void onMessage(message) async {
-    Map mapData = _decoder.convert(message);
+    Map<String, dynamic> mapData = decoder.convert(message);
+
     var data = mapData['data'];
+
     switch (mapData['type']) {
-      //新成员加入刷新界面
+      /*
+      * 新成员加入刷新界面
+      * */
       case 'peers':
         {
-          List peers = data;
+          List<dynamic> peers = data;
           if (this.onPeersUpdate != null) {
-            Map event = Map();
+            Map<String, dynamic> event = Map<String, dynamic>();
             event['self'] = _selfId;
             event['peers'] = peers;
             this.onPeersUpdate(event);
@@ -183,19 +222,24 @@ class RTCSignaling {
         }
         break;
 
-      // 接受offer
+      /*
+      * 获取远端的offer
+      * */
       case 'offer':
         {
           String id = data['from'];
+
+          print('offer from $id ');
           var description = data['description'];
           var sessionId = data['session_id'];
-          _sessionId = sessionId;
-          if (this.onStateChange != null)
-            this.onStateChange(SignalingState.CallStateNew);
+          this._sessionId = sessionId;
 
+          if (this.onStateChange != null) {
+            this.onStateChange(SignalingState.CallStateNew);
+          }
           /*
-          * 收到offer后，创建本地的peerconnection
-          * 之后设置远端的媒体信息，并向对端发送answer进行应答
+          * 收到远端offer后 创建本地的peerconnection
+          * 之后设置远端的媒体信息,并向对端发送answer进行应答
           * */
           _createPeerConnection(id).then((pc) {
             _peerConnections[id] = pc;
@@ -207,50 +251,93 @@ class RTCSignaling {
         break;
 
       /*
-      * 收到对端answer
+      * 收到对端 answer
       * */
       case 'answer':
         {
           String id = data['from'];
+
+          print('answer from $id ');
           Map description = data['description'];
+
           RTCPeerConnection pc = _peerConnections[id];
-          pc?.setRemoteDescription(
-              RTCSessionDescription(description['sdp'], description['type']));
+          if (pc != null) {
+            // 给peerconnection设置remote媒体信息
+            pc.setRemoteDescription(
+                RTCSessionDescription(description['sdp'], description['type']));
+          }
         }
         break;
-
-      // 收到对端的候选者，并添加候选者
+      /*
+      * 收到远端的候选者，并添加给候选者
+      * */
       case 'candidate':
         {
           String id = data['from'];
 
+          print('candidate from $id ');
           Map candidateMap = data['candidate'];
           RTCPeerConnection pc = _peerConnections[id];
-          RTCIceCandidate candidate = RTCIceCandidate(candidateMap['candidate'],
-              candidateMap['sdpMid'], candidateMap['sdpMlineIndex']);
-          pc?.addCandidate(candidate);
+
+          if (pc != null) {
+            RTCIceCandidate candidate = new RTCIceCandidate(
+                candidateMap['candidate'],
+                candidateMap['sdpMid'],
+                candidateMap['sdpMLineIndex']);
+            pc.addCandidate(candidate);
+          }
         }
         break;
-      // 离开
-      case 'bye':
+
+      /*
+      * 对方离开，断开连接
+      * */
+      case 'leave':
         {
-          String id = data['to'];
-          _localStream?.dispose();
-          _localStream = null;
+          var id = data;
+          _peerConnections.remove(id);
+          if (_localStream != null) {
+            _localStream.dispose();
+            _localStream = null;
+          }
 
           RTCPeerConnection pc = _peerConnections[id];
-          pc?.close();
-          _peerConnections.remove(pc);
-
-          _sessionId = null;
-          if (this.onStateChange != null)
+          if (pc != null) {
+            pc.close();
+            _peerConnections.remove(id);
+          }
+          this._sessionId = null;
+          if (this.onStateChange != null) {
             this.onStateChange(SignalingState.CallStateBye);
+          }
         }
         break;
-      // 心跳
+
+      case 'bye':
+        {
+          var to = data['to'];
+
+          if (_localStream != null) {
+            _localStream.dispose();
+            _localStream = null;
+          }
+
+          RTCPeerConnection pc = _peerConnections[to];
+          if (pc != null) {
+            pc.close();
+            _peerConnections.remove(to);
+          }
+
+          this._sessionId = null;
+          if (this.onStateChange != null) {
+            this.onStateChange(SignalingState.CallStateBye);
+          }
+        }
+        break;
+
       case 'keepalive':
         {
-          print('收到心跳检测');
+          print('keepaive');
         }
         break;
     }
@@ -260,36 +347,53 @@ class RTCSignaling {
   * 结束会话
   * */
   void bye() {
-    send('bye', {'session_id': _sessionId, 'from': _selfId});
+    _send('bye', {
+      'session_id': this._sessionId,
+      'from': this._selfId,
+    });
   }
 
-  // 创建PeerConnection
+  /*
+  * 创建peerconnection
+  * */
   Future<RTCPeerConnection> _createPeerConnection(id) async {
-    // 获取本地媒体
+    //获取本地媒体 并赋值给peerconnection
+
     _localStream = await createStream();
     RTCPeerConnection pc = await createPeerConnection(_iceServers, _config);
-    // 本地媒体流赋值给peerconnection
+
     pc.addStream(_localStream);
 
-    // 获取候选者
+    /*
+    * 获得获选者
+    * */
     pc.onIceCandidate = (candidate) {
-      send('candidate', {
+      print('onIceCandidate');
+      /*
+      * 获取候选者后，向对方发送候选者
+      * */
+      _send('candidate', {
         'to': id,
         'candidate': {
           'sdpMLineIndex': candidate.sdpMlineIndex,
           'sdpMid': candidate.sdpMid,
-          'candidate': candidate.candidate
+          'candidate': candidate.candidate,
         },
-        'session_id': _sessionId
+        'session_id': this._sessionId,
       });
     };
 
+    pc.onIceConnectionState = (state) {};
+
+    /*
+    * 获取远端的媒体流
+    * */
     pc.onAddStream = (stream) {
       if (this.onAddRemoteStream != null) this.onAddRemoteStream(stream);
     };
 
     /*
-    * 移除媒体流
+    * 移除远端的媒体流
     * */
     pc.onRemoveStream = (stream) {
       if (this.onRemoveRemoteStream != null) this.onRemoveRemoteStream(stream);
@@ -304,39 +408,48 @@ class RTCSignaling {
   /*
   * 创建offer
   * */
-  void _createOffer(String id, RTCPeerConnection pc) async {
-    RTCSessionDescription sdp = await pc.createOffer(_constraints);
-    pc.setLocalDescription(sdp);
-    // 向对端发送自己的媒体信息
-    send('offer', {
-      'to': id,
-      'description': {'sdp': sdp.sdp, 'type': sdp.type},
-      'session_id': _sessionId,
-    });
+  _createOffer(String id, RTCPeerConnection pc) async {
+    try {
+      RTCSessionDescription s = await pc.createOffer(_constraints);
+      pc.setLocalDescription(s);
+      //向远端发送自己的媒体信息
+      _send('offer', {
+        'to': id,
+        'description': {'sdp': s.sdp, 'type': s.type},
+        'session_id': this._sessionId,
+      });
+    } catch (e) {
+      print(e.toString());
+    }
   }
 
   /*
   * 创建answer
   * */
-  void _createAnswer(String id, RTCPeerConnection pc) async {
-    RTCSessionDescription sdp = await pc.createAnswer(_constraints);
-    pc.setLocalDescription(sdp);
-    /*
-    * 发送answer
-    * */
-    send('answer', {
-      'to': id,
-      'description': {'sdp': sdp.sdp, 'type': sdp.type},
-      'session_id': _sessionId,
-    });
+  _createAnswer(String id, RTCPeerConnection pc) async {
+    try {
+      RTCSessionDescription s = await pc.createAnswer(_constraints);
+      pc.setLocalDescription(s);
+      /*
+      * 回复answer
+      * */
+      _send('answer', {
+        'to': id,
+        'description': {'sdp': s.sdp, 'type': s.type},
+        'session_id': this._sessionId,
+      });
+    } catch (e) {
+      print(e.toString());
+    }
   }
 
   /*
   * 消息发送
   * */
-  void send(event, data) {
+  void _send(event, data) {
     data['type'] = event;
-    _channel?.sink.add(_encoder.convert(data));
-    print('${_encoder.convert(data)}');
+    JsonEncoder encoder = new JsonEncoder();
+    if (_channel != null) _channel.sink.add(encoder.convert(data));
+    print('send: ' + encoder.convert(data));
   }
 }
