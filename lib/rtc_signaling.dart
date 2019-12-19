@@ -48,22 +48,15 @@ class RTCSignaling {
   StreamStateCallback onAddRemoteStream;
   StreamStateCallback onRemoveRemoteStream;
   OtherEventCallback onPeersUpdate;
-  JsonDecoder decoder = new JsonDecoder();
+  JsonDecoder _decoder = new JsonDecoder();
+  JsonEncoder _encoder = JsonEncoder();
 
   /*
   * ice turn、stun 服务器 配置
   * */
   Map<String, dynamic> _iceServers = {
     'iceServers': [
-      {'url': 'stun:stun.l.google.com:19302'},
-      /*
-       * turn server configuration example.
-      {
-        'url': 'turn:123.45.67.89:3478',
-        'username': 'change_to_real_user',
-        'credential': 'change_to_real_secret'
-      },
-       */
+      {'url': 'turn:stun.l.supercodeboy.com:3478'},
     ]
   };
 
@@ -115,7 +108,7 @@ class RTCSignaling {
       /*
       * 连接socket注册自己
       * */
-      _send('new', {
+      send('new', {
         'name': displayName,
         'id': _selfId,
         'user_agent': 'flutter-webrtc + ${Platform.operatingSystem}'
@@ -202,7 +195,7 @@ class RTCSignaling {
   * 收到消息处理逻辑
   * */
   void onMessage(message) async {
-    Map<String, dynamic> mapData = decoder.convert(message);
+    Map<String, dynamic> mapData = _decoder.convert(message);
 
     var data = mapData['data'];
 
@@ -347,7 +340,7 @@ class RTCSignaling {
   * 结束会话
   * */
   void bye() {
-    _send('bye', {
+    send('bye', {
       'session_id': this._sessionId,
       'from': this._selfId,
     });
@@ -372,7 +365,7 @@ class RTCSignaling {
       /*
       * 获取候选者后，向对方发送候选者
       * */
-      _send('candidate', {
+      send('candidate', {
         'to': id,
         'candidate': {
           'sdpMLineIndex': candidate.sdpMlineIndex,
@@ -413,7 +406,7 @@ class RTCSignaling {
       RTCSessionDescription s = await pc.createOffer(_constraints);
       pc.setLocalDescription(s);
       //向远端发送自己的媒体信息
-      _send('offer', {
+      send('offer', {
         'to': id,
         'description': {'sdp': s.sdp, 'type': s.type},
         'session_id': this._sessionId,
@@ -433,7 +426,7 @@ class RTCSignaling {
       /*
       * 回复answer
       * */
-      _send('answer', {
+      send('answer', {
         'to': id,
         'description': {'sdp': s.sdp, 'type': s.type},
         'session_id': this._sessionId,
@@ -446,7 +439,7 @@ class RTCSignaling {
   /*
   * 消息发送
   * */
-  void _send(event, data) {
+  void send(event, data) {
     data['type'] = event;
     JsonEncoder encoder = new JsonEncoder();
     if (_channel != null) _channel.sink.add(encoder.convert(data));

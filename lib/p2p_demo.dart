@@ -20,7 +20,7 @@ class _P2PDemoState extends State<P2PDemo> {
   _P2PDemoState({Key key, @required this.serverurl});
 
   // rtc 信令对象
-  RTCSignaling _rtcSignaling;
+  RTCSignaling _signaling;
 
   // 本地设备名称
   String _displayName =
@@ -53,7 +53,7 @@ class _P2PDemoState extends State<P2PDemo> {
   @override
   void deactivate() {
     super.deactivate();
-    if (_rtcSignaling != null) _rtcSignaling.close();
+    if (_signaling != null) _signaling.close();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
   }
@@ -61,10 +61,10 @@ class _P2PDemoState extends State<P2PDemo> {
   // 创建联系
   void _connect() async {
     // 初始化信令
-    if (_rtcSignaling == null) {
-      _rtcSignaling = RTCSignaling(url: serverurl, displayName: _displayName);
+    if (_signaling == null) {
+      _signaling = RTCSignaling(url: serverurl, displayName: _displayName);
       // 信令状态回调
-      _rtcSignaling.onStateChange = (SignalingState state) {
+      _signaling.onStateChange = (SignalingState state) {
         switch (state) {
           case SignalingState.CallStateNew:
             setState(() {
@@ -94,7 +94,7 @@ class _P2PDemoState extends State<P2PDemo> {
         }
       };
       // 更新房间人员列表
-      _rtcSignaling.onPeersUpdate = ((event) {
+      _signaling.onPeersUpdate = ((event) {
         setState(() {
           _selfId = event['self'];
           _peers = event['peers'];
@@ -102,40 +102,36 @@ class _P2PDemoState extends State<P2PDemo> {
       });
 
       // 设置本地媒体
-      _rtcSignaling.onLocalStream = ((stream) {
+      _signaling.onLocalStream = ((stream) {
         _localRenderer.srcObject = stream;
       });
 
       // 设置远端媒体
-      _rtcSignaling.onAddRemoteStream = ((stream) {
+      _signaling.onAddRemoteStream = ((stream) {
         _remoteRenderer.srcObject = stream;
       });
 
       // 移除远端媒体
-      _rtcSignaling.onRemoveRemoteStream = ((stream) {
+      _signaling.onRemoveRemoteStream = ((stream) {
         _remoteRenderer.srcObject = null;
       });
 
       // socket 进行连接
-      _rtcSignaling.connect();
+      _signaling.connect();
     }
   }
 
   // 邀请对方
   _invitePeer(peerId) async {
-    if (_rtcSignaling != null && peerId != _selfId) {
-      _rtcSignaling.invite(peerId);
-    }
+    _signaling?.invite(peerId);
   }
   // 挂断
   _hangUp() {
-    if (_rtcSignaling != null) {
-      _rtcSignaling.bye();
-    }
+    _signaling?.bye();
   }
   // 切换前后摄像头
   _switchCamera() {
-    _rtcSignaling.switchCamera();
+    _signaling.switchCamera();
     _localRenderer.mirror = true;
   }
   // 初始化 列表
